@@ -1,22 +1,20 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const routes = require('./routes/routes'); // Import the routes file
+const userRoutes = require('./routes/UserRoutes');
+const productRoutes = require('./routes/productRoutes');
 const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
 
+const app = express(); // Initialize the express app
 
-const app = express(); // Initialize the express app first
 app.use(cors()); // Apply CORS middleware
+app.use(bodyParser.json()); // Parse JSON bodies
+
 dotenv.config();
 
-const port = process.env.PORT || 3000;
-// Use the routes in your application
-app.use('/api', routes);
-
-
-
-// MongoDB
-mongoose.connect('mongodb+srv://yeezyanwar:benmolay@project1.zurxw0g.mongodb.net/?retryWrites=true&w=majority&appName=project1', {})
+// MongoDB Connection
+mongoose.connect('mongodb+srv://77anwarrr:benmolay@cluster0.yjfttsq.mongodb.net/?retryWrites=true&w=majority')
   .then(() => {
     console.log('Connected to MongoDB successfully');
   })
@@ -24,11 +22,10 @@ mongoose.connect('mongodb+srv://yeezyanwar:benmolay@project1.zurxw0g.mongodb.net
     console.error('Error connecting to MongoDB:', error.message);
   });
 
-
-
-
-
-
+// Route Registrations
+const port = process.env.PORT || 3000;
+app.use('/api', userRoutes);
+app.use('/api', productRoutes);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
