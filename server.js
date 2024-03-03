@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 
 const app = express(); // Initialize the express app
-
+app.use(express.json());
 app.use(cors()); // Apply CORS middleware
 app.use(bodyParser.json()); // Parse JSON bodies
 
