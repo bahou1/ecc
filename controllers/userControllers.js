@@ -137,37 +137,44 @@ exports.getUserProfile = async (req, res) => {
 
 exports.updateUserProfile = async (req, res) => {
   try {
-    cookieParser()(req, res, async (err) => {
-      if (err) {
-        console.error('Error during cookie parsing:', err);
-        return res.status(500).json({ error: 'Internal Server Error' });
+    const userCookie = req.cookies.user;
+
+    if (!userCookie) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { userId } = userCookie;
+    const existingUser = await User.findById(userId);
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedData = {
+      username: req.body.username || existingUser.username,
+      email: req.body.email || existingUser.email,
+    };
+
+    // Check if a new password is provided
+    if (req.body.password) {
+      // Compare new password with existing hash
+      const passwordMatch = await bcrypt.compare(req.body.password, existingUser.password);
+
+      if (!passwordMatch) {
+        // If passwords don't match, update the password hash
+        updatedData.password = await bcrypt.hash(req.body.password, 10);
       }
+    }
 
-      const userCookie = req.cookies.user;
+    const updatedUser = await User.findByIdAndUpdate(userId, updatedData, { new: true });
 
-      if (!userCookie) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const { userId } = userCookie;
-      const updatedData = {
-        username: req.body.get('username'),
-        email: req.body.get('email'),
-        password: req.body.get('password'),
-      };
-
-      if (updatedData.password) {
-        updatedData.password = await bcrypt.hash(updatedData.password, 10);
-      }
-
-      const updatedUser = await User.findByIdAndUpdate(userId, updatedData, { new: true });
-      res.status(200).json({ message: 'User profile updated successfully', user: updatedUser });
-    });
+    res.status(200).json({ message: 'User profile updated successfully', user: updatedUser });
   } catch (error) {
     console.error('Error updating user profile:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
+
 
 exports.deleteUserProfile = async (req, res) => {
   try {
