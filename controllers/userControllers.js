@@ -1,164 +1,200 @@
-// Import necessary modules and dependencies
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const User = require('../models/UserModel');
+const emailjs = require('@emailjs/nodejs');
 
-// Set up multer for handling file uploads
-// Define storage settings for uploaded files
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // Saving uploaded files in the 'uploads/' directory
-    },
-    filename: function (req, file, cb) {
-        const ext = path.extname(file.originalname);
-        cb(null, 'profile-' + Date.now() + ext); // Setting a unique filename for each uploaded file
-    },
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`),
 });
 
-// Create multer middleware with the defined storage settings, allowing only a single file with the field name 'profilePicture'
-const upload = multer({ storage: storage }).single('profilePicture');
+const upload = multer({ storage }).single('profilePicture');
+const uploadFormData = multer().none();
 
-// Another multer middleware for handling 'form-data' parsing, allowing only text fields
-const upload2 = multer().none();
+exports.registerUser = async (req, res) => {
+  try {
+    upload(req, res, async (err) => {
+      if (err) {
+        console.error('Error during file upload:', err);
+        return res.status(500).json({ error: 'Error during file upload' });
+      }
 
-// Registering a new user
-exports.registerUser = async (req, res, next) => {
-    try {
-        // Using the 'upload' middleware to handle file upload
-        upload(req, res, async function (err) {
-            if (err) {
-                console.error('Error during file upload:', err);
-                return res.status(500).json({ error: 'Error during file upload' });
-            }
+      const { username, email, password } = req.body;
 
-            // Extracting user registration information from the request body
-            const { username, email, password } = req.body;
-            console.log('Receiving registration request:', { username, email, password });
+      const existingUser = await User.findOne({ email });
 
-            // Checking if the user with the given email already exists
-            const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already exists' });
+      }
 
-            if (existingUser) {
-                return res.status(400).json({ error: 'Email already exists' });
-            }
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-            // Hashing the user's password before storing it in the database
-            const hashedPassword = await bcrypt.hash(password, 10);
-            console.log('Hashing Password:', hashedPassword);
+      const newUser = new User({
+        username,
+        email,
+        password: hashedPassword,
+        profilePicture: req.file ? req.file.path : null,
+      });
 
-            // Creating a new user instance with the provided information
-            const newUser = new User({
-                username,
-                email,
-                password: hashedPassword,
-                profilePicture: req.file ? req.file.path : null, // Setting profilePicture to the file path if a file is uploaded, otherwise setting it to null
-            });
+      await newUser.save();
 
-            // Saving the new user to the database
-            await newUser.save();
-
-            console.log('User being saved successfully');
-
-            // Logging file information if a file is uploaded
-            if (req.file) {
-                console.log('Uploading file information:', {
-                    filename: req.file.filename,
-                    originalname: req.file.originalname,
-                    path: req.file.path,
-                });
-            }
-
-            // Sending a success response
-            res.status(201).json({ message: 'User registered successfully' });
+      if (req.file) {
+        console.log('Uploading file information:', {
+          filename: req.file.filename,
+          originalname: req.file.originalname,
+          path: req.file.path,
         });
-    } catch (error) {
-        console.error('Error during registration:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+      }
+
+      res.status(201).json({ message: 'User registered successfully' });
+
+      const templateParams = {
+        name: username,
+        notes: 'Thank you for registering!',
+      };
+
+      await emailjs.send('service_mm9n37p', '063518', templateParams, {
+        publicKey: 't6d38T_eKE7riU3k6',
+        privateKey: 'KoX37a62Yjt52xD3s9UrM',
+      })
+        .then(response => console.log('Registration confirmation email sent successfully', response))
+        .catch(error => console.error('Error sending registration confirmation email:', error));
+    });
+  } catch (error) {
+    console.error('Error during registration:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
-// Logging in an existing user
 exports.loginUser = async (req, res) => {
-    try {
-        // Using the 'upload2' middleware to handle 'form-data' parsing
-        upload2(req, res, async (err) => {
-            if (err) {
-                console.error('Error during form-data parsing:', err);
-                return res.status(500).json({ error: 'Internal Server Error' });
-            }
+  try {
+    cookieParser()(req, res, async (err) => {
+      if (err) {
+        console.error('Error during cookie parsing:', err);
+        return res.status(500).json({ error: 'Internal Server Error' });
+      }
 
-            // Extracting login information from the request body
-            const { email, password } = req.body;
-            console.log('Receiving login request:', { email, password });
+      uploadFormData(req, res, async (err) => {
+        if (err) {
+          console.error('Error during form-data parsing:', err);
+          return res.status(500).json({ error: 'Internal Server Error' });
+        }
 
-            // Finding the user with the provided email in the database
-            const user = await User.findOne({ email });
+        const { email, password } = req.body;
+        console.log('Receiving login request:', { email, password });
 
-            if (user) {
-                // Comparing the provided password with the stored hashed password
-                const passwordMatch = await bcrypt.compare(password, user.password);
-                console.log('Input Password:', password);
-                console.log('Stored Password:', user.password);
-                console.log('Password Matching:', passwordMatch);
+        const user = await User.findOne({ email });
 
-                // Sending an appropriate response based on password matching result
-                if (passwordMatch) {
-                    res.status(200).json({ message: 'Login successful' });
-                } else {
-                    res.status(401).json({ error: 'Invalid credentials' });
-                }
-            } else {
-                res.status(401).json({ error: 'Invalid credentials' });
-            }
-        });
-    } catch (error) {
-        console.error('Error during login:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+        if (user) {
+          const passwordMatch = await bcrypt.compare(password, user.password);
+          console.log('Input Password:', password);
+          console.log('Stored Password:', user.password);
+          console.log('Password Matching:', passwordMatch);
+
+          if (passwordMatch) {
+            res.cookie('user', { email: user.email, userId: user._id }, { maxAge: 7 * 24 * 60 * 60 * 1000 });
+            res.status(200).json({ message: 'Login successful' });
+          } else {
+            res.status(401).json({ error: 'Invalid credentials' });
+          }
+        } else {
+          res.status(401).json({ error: 'Invalid credentials' });
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
-// Placeholder functions for user profile operations (not implemented yet)
 exports.getUserProfile = async (req, res) => {
-    res.send('Getting user page');
+  try {
+    cookieParser()(req, res, async (err) => {
+      if (err) {
+        console.error('Error during cookie parsing:', err);
+        return res.status(500).json({ error: 'Internal Server Error' });
+      }
+
+      const userCookie = req.cookies.user;
+
+      if (!userCookie) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { userId } = userCookie;
+      const userProfile = await User.findById(userId);
+      res.status(200).json(userProfile);
+    });
+  } catch (error) {
+    console.error('Error getting user profile:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
 exports.updateUserProfile = async (req, res) => {
-    res.send('Updating user page');
+  try {
+    cookieParser()(req, res, async (err) => {
+      if (err) {
+        console.error('Error during cookie parsing:', err);
+        return res.status(500).json({ error: 'Internal Server Error' });
+      }
+
+      const userCookie = req.cookies.user;
+
+      if (!userCookie) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { userId } = userCookie;
+      const updatedData = {
+        username: req.body.get('username'),
+        email: req.body.get('email'),
+        password: req.body.get('password'),
+      };
+
+      if (updatedData.password) {
+        updatedData.password = await bcrypt.hash(updatedData.password, 10);
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(userId, updatedData, { new: true });
+      res.status(200).json({ message: 'User profile updated successfully', user: updatedUser });
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
-// Deleting a user profile
 exports.deleteUserProfile = async (req, res) => {
-    try {
-        // Ensuring that multer has processed the form-data before reaching this handler
-        upload(req, res, async function (err) {
-            if (err) {
-                console.error('Error during form-data processing:', err);
-                return res.status(500).json({ error: 'Error during form-data processing' });
-            }
+  try {
+    cookieParser()(req, res, async (err) => {
+      if (err) {
+        console.error('Error during cookie parsing:', err);
+        return res.status(500).json({ error: 'Internal Server Error' });
+      }
 
-            // Extracting the username from form-data
-            const { username } = req.body;
+      const userCookie = req.cookies.user;
 
-            if (!username) {
-                return res.status(400).json({ error: 'Username is required in form-data' });
-            }
+      if (!userCookie) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
-            // Finding the user by username and deleting the profile
-            const deletedUser = await User.findOneAndDelete({ username });
+      const { email, userId } = userCookie;
+      const deletedUser = await User.findByIdAndDelete(userId);
 
-            if (!deletedUser) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-
-            // Optionally, you can also delete any associated data, like files or other related information
-            // For example, if the user has a profile picture, you might want to delete the file from storage
-
-            // Responding with a success message
-            res.json({ message: 'User profile deleted successfully', deletedUser });
-        });
-    } catch (error) {
-        console.error('Error during user profile deletion:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+      if (deletedUser) {
+        res.clearCookie('user');
+        res.status(200).json({ message: 'User profile deleted successfully' });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    });
+  } catch (error) {
+    console.error('Error during profile deletion:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
