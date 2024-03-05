@@ -199,3 +199,90 @@ exports.getProductsStats = async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
+/*--------------------------------------------------------------------------------------*/
+
+
+exports.getProductsByCategory = async (req, res) => {
+  try {
+    const { category } = req.query;
+
+    console.log('Category parameter:', category); // Add this line for debugging
+
+    if (!category) {
+      return res.status(400).json({ error: 'Category parameter is missing' });
+    }
+
+    const products = await Product.find({ category });
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+exports.getProductsSorted = async (req, res) => {
+  try {
+    const { sortBy, order } = req.query;
+    const sortOrder = order === 'desc' ? -1 : 1;
+    const products = await Product.find().sort({ [sortBy]: sortOrder });
+    res.status(200).json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.searchProducts = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    console.log('Search parameter:', search); // Add this line for debugging
+
+    const products = await Product.find({
+      $or: [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ],
+    });
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+exports.getProductsByPriceRange = async (req, res) => {
+  try {
+    const { minPrice, maxPrice } = req.query;
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(minPrice) && mongoose.Types.ObjectId.isValid(maxPrice);
+
+    if (!isValidObjectId) {
+      throw new Error('Invalid ObjectId');
+    }
+
+    const products = await Product.find({
+      price: { $gte: minPrice, $lte: maxPrice },
+    });
+    res.status(200).json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getPaginatedProducts = async (req, res) => {
+  try {
+    const { page, limit } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const pageSize = parseInt(limit) || 10;
+
+    const products = await Product.find()
+      .skip((pageNumber - 1) * pageSize)
+      .limit(pageSize);
+
+    res.status(200).json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
