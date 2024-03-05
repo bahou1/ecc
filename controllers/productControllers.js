@@ -66,24 +66,30 @@ exports.createProduct = async (req, res) => {
         return res.status(400).json({ error: err.message });
       }
 
-      const { title, description, price, category, owner, stock, published } = req.body;
+      const { title, description, price, category, stock, published } = req.body;
 
-      if (!title || !description || !price || !category || !owner || stock === undefined) {
+      if (!title || !description || !price || !category || stock === undefined) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
       const images = req.file ? [req.file.path] : [];
+
+      // Retrieve user information from the request cookies
+      const { email: ownerEmail, userId: ownerId } = req.cookies.user;
 
       const newProduct = new Product({
         title,
         description,
         price,
         category,
-        owner,
+        owner: ownerEmail, // Set owner as the email (string)
         stock,
         published: published || true,
         images,
       });
+
+      // Log the newProduct object for debugging
+      console.log('New Product:', newProduct);
 
       await newProduct.validate();
       await newProduct.save();
